@@ -1,7 +1,6 @@
 # Morning Recipe Agent (MorningChefAgent)
 
 A schedule-driven, self-running agent that looks up the "latest popular recipes" every morning based on the ingredients you have on hand.
-Submission for the [AWS Builder Center Weekend Agent Challenge](https://builder.aws.com/).
 
 ## Architecture
 
