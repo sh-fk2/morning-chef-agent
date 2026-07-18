@@ -47,6 +47,10 @@ sequenceDiagram
     end
 ```
 
+### Example Slack Notification
+
+![Example Slack notification from MorningChefAgent, showing three breakfast recipe suggestions with bold titles and clickable source links](./assets/slack_notification_example.png)
+
 - The schedule is defined in UTC by default (`SCHEDULE_CRON`, `SCHEDULE_TIMEZONE` — see Environment Variables below); the currently deployed instance runs at 07:00 UTC (16:00 JST).
 - Ingesting the ingredient list (e.g. receipt photo parsing) is not implemented yet. Ingredients are seeded manually via `scripts/seed_ingredients.py`. Because the input and output flows are decoupled through DynamoDB, adding a receipt-photo pipeline (Bedrock Vision) in the future would require no changes to this output flow.
 - Web search uses [Amazon Bedrock AgentCore Web Search Tool](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-target-connector-web-search-tool.html), which needs no third-party API key (currently `us-east-1` only).
