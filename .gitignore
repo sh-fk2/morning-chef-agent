@@ -1,0 +1,24 @@
+# CDK
+cdk/.venv/
+cdk/cdk.out/
+cdk/**/__pycache__/
+
+# AgentCore CLI (アカウントID・ARN等の環境固有情報を含むため)
+agentcore/**/.bedrock_agentcore.yaml
+agentcore/**/.bedrock_agentcore/
+agentcore/**/.dockerignore
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor / OS
+.DS_Store
+.claude/settings.local.json
+
+# Local scratch files (not part of the repo)
+README.txt
+
+# Article drafts and assets (kept local only, not part of the repo)
+article/
