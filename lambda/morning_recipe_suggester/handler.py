@@ -83,7 +83,16 @@ def lambda_handler(event: dict, context: Any) -> dict:
         # ⑤ Slack投稿・今回の提案メッセージts記録
         text = format_slack_message(recipes)
         message_ts = slack.post_message(text)
-        used = sorted({name for recipe in recipes for name in recipe["ingredients_used"]})
+        # recipe_agentが返す食材名は入力と完全一致する想定だが、LLM出力は未検証の
+        # 入力として扱い、正規化(strip/lower)してから消費判定に使う集合へ格納する。
+        # ここを怠ると①のconsume_ingredients側の集合演算が表記揺れで一致せず、
+        # 食材が消費されないまま在庫に残り続けるバグになる。
+        used = sorted({
+            name.strip().lower()
+            for recipe in recipes
+            for name in recipe["ingredients_used"]
+            if isinstance(name, str) and name.strip()
+        })
         store.put_recipe_message(RecipeMessageRecord(
             message_ts=message_ts,
             ingredients_used=used,
