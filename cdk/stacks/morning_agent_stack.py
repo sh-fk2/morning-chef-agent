@@ -1,8 +1,11 @@
 """朝ごはん提案エージェント用スタック。
 
-EventBridge Scheduler(cron, JST 07:00) → Lambda → DynamoDB(食材リスト取得)
-→ AgentCore Runtime(recipe_agent, Web Search Tool経由でレシピ検索)
-→ Slack Incoming Webhook 投稿、という出力フローのみを構築する。
+EventBridge Scheduler(cron, デフォルトUTC 07:00) → Lambda(morning_recipe_suggester)
+  ① Slackの前回提案メッセージへの🍳リアクションをチェックし、在庫消費を反映(pull型)
+  ② Slackチャンネルの新着メッセージ(レシートOCRテキスト)をBedrockで食材名に正規化し在庫に追加
+  ③ DynamoDBから最新の食材スナップショットを取得
+  ④ AgentCore Runtime(recipe_agent, Web Search Tool経由)でレシピ提案を構造化データとして取得
+  ⑤ Slackに投稿し、提案メッセージ⇔使用食材の対応をDynamoDBに記録
 AgentCore Runtime/Gateway自体は bedrock-agentcore CLI で別途デプロイ済み。
 """
 from pathlib import Path
@@ -19,7 +22,7 @@ from aws_cdk import aws_scheduler as scheduler
 from constructs import Construct
 
 LAMBDA_DIR = Path(__file__).parent.parent.parent / "lambda" / "morning_recipe_suggester"
-LAMBDA_TIMEOUT_SECONDS = 150
+LAMBDA_TIMEOUT_SECONDS = 300
 
 
 class MorningAgentStack(Stack):
@@ -28,7 +31,9 @@ class MorningAgentStack(Stack):
         scope: Construct,
         construct_id: str,
         recipe_agent_runtime_arn: str,
-        slack_webhook_param_name: str,
+        slack_bot_token_param_name: str,
+        slack_channel_id: str,
+        ingredient_model_id: str,
         schedule_cron: str,
         schedule_timezone: str,
         **kwargs,
@@ -56,11 +61,14 @@ class MorningAgentStack(Stack):
             environment={
                 "TABLE_NAME": table.table_name,
                 "AGENT_RUNTIME_ARN": recipe_agent_runtime_arn,
-                "SLACK_WEBHOOK_PARAM": slack_webhook_param_name,
+                "SLACK_BOT_TOKEN_PARAM": slack_bot_token_param_name,
+                "SLACK_CHANNEL_ID": slack_channel_id,
+                "INGREDIENT_MODEL_ID": ingredient_model_id,
             },
         )
 
-        table.grant_read_data(suggester_fn)
+        # Slackカーソル・提案メッセージ記録・在庫消費の書き込みが必要なため read_write に拡張
+        table.grant_read_write_data(suggester_fn)
 
         suggester_fn.add_to_role_policy(
             iam.PolicyStatement(
@@ -76,7 +84,7 @@ class MorningAgentStack(Stack):
             iam.PolicyStatement(
                 actions=["ssm:GetParameter"],
                 resources=[
-                    f"arn:aws:ssm:{self.region}:{self.account}:parameter{slack_webhook_param_name}"
+                    f"arn:aws:ssm:{self.region}:{self.account}:parameter{slack_bot_token_param_name}"
                 ],
             )
         )
@@ -89,6 +97,20 @@ class MorningAgentStack(Stack):
                         "kms:ViaService": f"ssm.{self.region}.amazonaws.com",
                     }
                 },
+            )
+        )
+
+        # 食材名正規化(ingredient_normalizer.py)用のBedrock Converse呼び出し権限。
+        # us.*等のクロスリージョン推論プロファイルはプロファイルARNのみでは
+        # AccessDeniedExceptionになりうるため、ファンアウト先の素のfoundation-model ARNも許可する。
+        bare_model_id = ingredient_model_id.split(".", 1)[1] if "." in ingredient_model_id else ingredient_model_id
+        suggester_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/{ingredient_model_id}",
+                    f"arn:aws:bedrock:*::foundation-model/{bare_model_id}",
+                ],
             )
         )
 

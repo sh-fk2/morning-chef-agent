@@ -1,3 +1,4 @@
 strands-agents
 bedrock-agentcore
 mcp-proxy-for-aws
+pydantic

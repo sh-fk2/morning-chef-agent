@@ -1,7 +1,9 @@
 """DynamoDBの食材リストテーブルに、直近の食材リストを手動投入するスクリプト。
 
-レシート画像解析(Bedrock Vision)による自動投入は将来の拡張とし、
-現時点ではこのスクリプトで手動投入する運用とする。
+食材の自動取り込みは、iPhoneのLive Text(テキスト認識表示)でレシートをOCRし
+Slackに投稿する運用+Bedrockでの正規化(ingredient_normalizer.py)が担う。
+このスクリプトは手動オーバーライド用(デモ・デバッグ・初回投入・状態リセット)
+として残しており、既存の食材リストを"上書き"する点に注意(自動取り込みは追加=union)。
 
 環境変数:
     TABLE_NAME (必須): CDKでデプロイしたDynamoDBテーブル名
@@ -29,7 +31,7 @@ def seed(ingredient_names: list[str]) -> None:
     table.put_item(
         Item={
             "household_id": HOUSEHOLD_ID,
-            "captured_at": now.isoformat(),
+            "captured_at": f"SNAPSHOT#{now.isoformat()}",
             "items": [{"name": name} for name in ingredient_names],
             "ttl": ttl_epoch,
         }

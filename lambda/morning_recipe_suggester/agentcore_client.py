@@ -8,8 +8,12 @@ from botocore.config import Config
 _BOTO_CONFIG = Config(read_timeout=120, connect_timeout=10)
 
 
-def invoke_recipe_agent(agent_runtime_arn: str, region_name: str, ingredients: list[str]) -> str:
-    """recipe_agent(AgentCore Runtime)を呼び出し、SSEストリームをテキストに変換して返す。"""
+def invoke_recipe_agent(agent_runtime_arn: str, region_name: str, ingredients: list[str]) -> list[dict]:
+    """recipe_agent(AgentCore Runtime)を呼び出し、構造化されたレシピ提案リストを返す。
+
+    recipe_agent側が{"recipes": [], "error": "..."}を返した場合(構造化出力の
+    生成に失敗した場合)は例外を送出し、呼び出し元でフォールバック処理させる。
+    """
     client = boto3.client("bedrock-agentcore", region_name=region_name, config=_BOTO_CONFIG)
     payload = json.dumps({"ingredients": ingredients}).encode()
 
@@ -17,21 +21,9 @@ def invoke_recipe_agent(agent_runtime_arn: str, region_name: str, ingredients: l
         agentRuntimeArn=agent_runtime_arn,
         payload=payload,
     )
+    body = json.loads(response["response"].read())
 
-    buffer = ""
-    for line in response["response"].iter_lines():
-        if not line or not line.decode("utf-8").startswith("data: "):
-            continue
+    if body.get("error"):
+        raise RuntimeError(f"recipe_agent failed to produce structured output: {body['error']}")
 
-        data = line.decode("utf-8")[6:]
-        if data.startswith('"') or data.startswith("'"):
-            continue
-
-        event = json.loads(data)
-
-        if "data" in event and isinstance(event["data"], str):
-            buffer += event["data"]
-        elif "event" in event and "contentBlockDelta" in event["event"]:
-            buffer += event["event"]["contentBlockDelta"]["delta"].get("text", "")
-
-    return buffer
+    return body["recipes"]
